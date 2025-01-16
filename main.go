@@ -30,22 +30,6 @@ func fetch(url string) (*html.Node, error) {
 	return doc, nil
 }
 
-// Extracts the titles from a webpage by traversing the HTML nodes
-func scrapeTitles(n *html.Node) {
-	if n.Type == html.ElementNode && n.Data == "tr" { // Adjust this for different tags or classes
-		//fmt.Println("chegou aqui")
-
-		for _, attr := range n.Attr {
-			if attr.Key == "class" && attr.Val == "" { // Modify as needed
-				fmt.Println(n.FirstChild.Data)
-			}
-		}
-	}
-	for c := n.FirstChild; c != nil; c = c.NextSibling {
-		scrapeTitles(c)
-	}
-}
-
 func scrapeProducts(n *html.Node) {
 	if n.Type == html.ElementNode && n.Data == "tbody" && len(n.Attr) > 0 {
 		for c := n.FirstChild; c != nil; c = c.NextSibling {
