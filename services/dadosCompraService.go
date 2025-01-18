@@ -18,7 +18,7 @@ func FetchDadosCompra(url string) (models.DadosCompra, error) {
 	if err != nil {
 		return models.DadosCompra{}, err
 	}
-
+	dadosCompra = models.DadosCompra{}
 	scrapeAll(doc)
 	for _, produto := range dadosCompra.Produtos {
 		quantidade, err := strconv.Atoi(produto.Quantidade)
