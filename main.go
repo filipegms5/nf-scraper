@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/filipegms5/nf-scraper/models"
 	"golang.org/x/net/html"
 )
 
-var produtos models.Produtos
 var dadosCompra models.DadosCompra
 
 // Fetches and parses the HTML document
@@ -30,105 +30,117 @@ func fetch(url string) (*html.Node, error) {
 	return doc, nil
 }
 
-func scrapeProducts(n *html.Node) {
-	if n.Type == html.ElementNode && n.Data == "tbody" && len(n.Attr) > 0 {
+func scrapeAll(n *html.Node) {
+
+	var traverse func(*html.Node)
+	traverse = func(n *html.Node) {
+
+		storeName(n)
+
+		// Store address
+		storeAdress(n)
+
+		// Date
+		date(n)
+
+		// Products
+		products(n)
+
+		// Sale info
+		saleInfo(n)
+
+		// Traverse children
 		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			if c.Type == html.ElementNode && c.Data == "tr" {
-				var produto models.Produto
-				var count = 0
-				for td := c.FirstChild; td != nil; td = td.NextSibling {
-					if td.Type == html.ElementNode && td.Data == "td" {
-						if td.FirstChild != nil && td.FirstChild.Type == html.ElementNode && td.FirstChild.Data == "h7" {
-							produto.Nome = td.FirstChild.FirstChild.Data
-						} else {
-							if count == 1 {
-								produto.Quantidade = strings.Split(td.FirstChild.Data, ":")[1]
-							} else if count == 2 {
-								produto.Unidade = strings.Split(td.FirstChild.Data, ":")[1]
-							} else if count == 3 {
-								produto.Valor = strings.Split(td.FirstChild.Data, ": R$ ")[1]
-							}
-						}
-						count++
-					}
-				}
-				produtos.Produtos = append(produtos.Produtos, produto)
-			}
+			traverse(c)
 		}
 	}
-	for c := n.FirstChild; c != nil; c = c.NextSibling {
-		scrapeProducts(c)
-	}
-}
-func scrapeSaleInfo(n *html.Node) {
-	count := 0
-	var printStrongTags func(*html.Node)
-	printStrongTags = func(n *html.Node) {
-		if n.Type == html.ElementNode && n.Data == "strong" {
-			count++
-			if count == 6 {
-				dadosCompra.ValorTotal = n.FirstChild.Data
-			} else if count == 8 {
-				for c := n.FirstChild; c != nil; c = c.NextSibling {
-					if c.Type == html.ElementNode && c.Data == "div" {
-						dadosCompra.FormaPagamento = c.FirstChild.Data
-					}
-				}
-			}
-		}
-		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			printStrongTags(c)
-		}
-	}
-	printStrongTags(n)
+
+	traverse(n)
 }
 
-func scrapeStoreName(n *html.Node) {
-	if n.Type == html.ElementNode && n.Data == "th" {
-		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			if c.Type == html.ElementNode && c.Data == "h4" {
-				for b := c.FirstChild; b != nil; b = b.NextSibling {
-					if b.Type == html.ElementNode && b.Data == "b" {
-						dadosCompra.Loja = b.FirstChild.Data
-					}
-				}
+func storeName(n *html.Node) {
+	// Store name
+	if n.Type == html.ElementNode && n.Data == "h4" {
+		for b := n.FirstChild; b != nil; b = b.NextSibling {
+			if b.Type == html.ElementNode && b.Data == "b" && b.FirstChild != nil {
+				dadosCompra.Loja = b.FirstChild.Data
 			}
 		}
-	}
-	for c := n.FirstChild; c != nil; c = c.NextSibling {
-		scrapeStoreName(c)
 	}
 }
 
-func scrapeStoreAddress(n *html.Node) {
+func date(n *html.Node) {
+	dateRegex := regexp.MustCompile(`\d{2}/\d{2}/\d{4} \d{2}:\d{2}:\d{2}`)
+	if n.Type == html.TextNode {
+		if data := strings.TrimSpace(n.Data); dateRegex.MatchString(data) {
+			dadosCompra.Data = data
+		}
+	}
+}
+
+func storeAdress(n *html.Node) {
+	// Store address
 	if n.Type == html.ElementNode && n.Data == "td" {
 		for _, attr := range n.Attr {
-			if attr.Key == "style" && attr.Val == "border-top: 0px; display: block; font-style: italic;" {
-				if n.FirstChild != nil {
-					dadosCompra.Endereco = n.FirstChild.Data
-					return
-				}
+			if attr.Key == "style" && attr.Val == "border-top: 0px; display: block; font-style: italic;" && n.FirstChild != nil {
+				dadosCompra.Endereco = n.FirstChild.Data
 			}
 		}
 	}
-	for c := n.FirstChild; c != nil; c = c.NextSibling {
-		scrapeStoreAddress(c)
+}
+
+func products(n *html.Node) {
+	if n.Type == html.ElementNode && n.Data == "tr" {
+		produto := models.Produto{}
+		count := 0
+		for td := n.FirstChild; td != nil; td = td.NextSibling {
+			if td.Type == html.ElementNode && td.Data == "td" {
+				text := ""
+				if td.FirstChild != nil {
+					if td.FirstChild.Type == html.ElementNode && td.FirstChild.Data == "h7" {
+						text = td.FirstChild.FirstChild.Data
+						produto.Nome = text
+					} else {
+						text = td.FirstChild.Data
+						switch count {
+						case 1:
+							parts := strings.Split(text, ":")
+							if len(parts) > 1 {
+								produto.Quantidade = strings.TrimSpace(parts[1])
+							}
+						case 2:
+							parts := strings.Split(text, ":")
+							if len(parts) > 1 {
+								produto.Unidade = strings.TrimSpace(parts[1])
+							}
+						case 3:
+							parts := strings.Split(text, ": R$ ")
+							if len(parts) > 1 {
+								produto.Valor = strings.TrimSpace(parts[1])
+							}
+						}
+					}
+				}
+				count++
+			}
+		}
+		if produto.Nome != "" {
+			dadosCompra.Produtos = append(dadosCompra.Produtos, produto)
+		}
 	}
 }
 
-func scrapeDate(n *html.Node) {
-	if n.Type == html.TextNode {
-		data := strings.TrimSpace(n.Data)
-		matched, _ := regexp.MatchString(`\d{2}/\d{2}/\d{4} \d{2}:\d{2}:\d{2}`, data)
-		if matched {
-			dadosCompra.Data = data
-			return
+func saleInfo(n *html.Node) {
+	if n.Type == html.ElementNode && n.Data == "strong" && n.FirstChild != nil {
+		text := n.FirstChild.Data
+		if strings.Contains(text, ".") {
+			dadosCompra.ValorTotal = text
+		} else if n.FirstChild.Type == html.ElementNode && n.FirstChild.Data == "div" {
+			dadosCompra.FormaPagamento = n.FirstChild.FirstChild.Data
 		}
 	}
-	for c := n.FirstChild; c != nil; c = c.NextSibling {
-		scrapeDate(c)
-	}
 }
+
 func main() {
 	url := "https://portalsped.fazenda.mg.gov.br/portalnfce/sistema/qrcode.xhtml?p=31250101928075004278650090004419571142667462%7C2%7C1%7C1%7C20422ea97778a2db22109f5c5b218e22fd62c05a"
 	doc, err := fetch(url)
@@ -137,11 +149,14 @@ func main() {
 		return
 	}
 
-	scrapeProducts(doc)
-	scrapeSaleInfo(doc)
-	scrapeStoreName(doc)
-	scrapeStoreAddress(doc)
-	scrapeDate(doc)
-	dadosCompra.Produtos = produtos
-	//scrapeTitles(doc)
+	scrapeAll(doc)
+	for _, produto := range dadosCompra.Produtos {
+		quantidade, err := strconv.Atoi(produto.Quantidade)
+		if err == nil {
+			dadosCompra.QuantidadeTotal += quantidade
+		} else {
+			dadosCompra.QuantidadeTotal += 1
+		}
+	}
+	fmt.Println(dadosCompra.QuantidadeTotal)
 }
