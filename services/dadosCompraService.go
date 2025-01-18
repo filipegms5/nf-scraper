@@ -1,6 +1,7 @@
 package services
 
 import (
+	"crypto/tls"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -32,8 +33,14 @@ func FetchDadosCompra(url string) (models.DadosCompra, error) {
 
 // Fetches and parses the HTML document
 func fetch(url string) (*html.Node, error) {
+	// Create a custom HTTP client with TLS configuration to skip SSL verification
+	customTransport := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client := &http.Client{Transport: customTransport}
+
 	// Send a GET request
-	resp, err := http.Get(url)
+	resp, err := client.Get(url)
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +123,7 @@ func products(n *html.Node) {
 				if td.FirstChild != nil {
 					if td.FirstChild.Type == html.ElementNode && td.FirstChild.Data == "h7" {
 						text = td.FirstChild.FirstChild.Data
-						produto.Nome = text
+						produto.Nome = strings.Split(text, "\n")[0]
 					} else {
 						text = td.FirstChild.Data
 						switch count {
