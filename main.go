@@ -7,6 +7,10 @@ import (
 )
 
 func main() {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8000" // Default port if not specified
+	}
 	router := router.SetupRouter()
-	router.Run(os.Getenv("PORT"))
+	router.Run(os.Getenv(port))
 }
