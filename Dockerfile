@@ -22,9 +22,6 @@ FROM scratch
 # Copia apenas o binario gerado no stage anterior.
 COPY --from=builder /app/server /
 
-# Expose the port
-EXPOSE 8000
-
 # Define o ponto de entrada para o container como /server.
 # O binario será executado quando o container for iniciado.
 ENTRYPOINT ["/server"]
